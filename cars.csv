@@ -1,0 +1,6 @@
+Company,Model,Year,Mileage_kmpl,Engine_CC,Type,Price_USD,Available_Countries
+Toyota,Camry,2023,15.0,2500,Sedan,26000,"USA, Canada, Japan"
+Ford,Mustang,2024,10.0,5000,Coupe,30000,"USA, Canada, UK"
+Honda,Civic,2023,18.0,1500,Sedan,23000,"USA, Japan, Bangladesh"
+Hyundai,Elantra,2023,17.0,1600,Sedan,21000,"USA, South Korea, Bangladesh"
+BMW,X5,2024,12.0,3000,SUV,65000,"Germany, USA, UK"
