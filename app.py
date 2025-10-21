@@ -24,6 +24,9 @@ CAR_DATA = load_knowledge_base()
 def parse_user_input(user_text, car_data):
     user_text = user_text.lower()
     intents = {
+        'greeting': ['hello', 'hi', 'hey', 'salam'],
+        'goodbye': ['bye', 'goodbye', 'quit', 'exit'],
+        'thanks': ['thanks', 'thank you', 'appreciate it'],
         'get_price': ['price', 'cost', 'how much'],
         'get_mileage': ['mileage', 'fuel', 'kmpl'],
         'get_engine': ['engine', 'cc', 'horsepower'],
@@ -52,6 +55,13 @@ def get_car_details(model_name, car_data):
     return None
 
 def generate_response(intent, car_details):
+    if intent == 'greeting':
+        return "Hello! How can I help you with car information today?"
+    if intent == 'goodbye':
+        return "Goodbye! Have a great day."
+    if intent == 'thanks':
+        return "You're welcome! Is there anything else I can help with?"
+
     if not car_details:
         return "I'm sorry, I couldn't find information for that car. Please check the model name."
     company, model = car_details['Company'], car_details['Model']
@@ -165,7 +175,9 @@ def ask():
     
     intent, entity = parse_user_input(user_message, CAR_DATA)
     
-    if not intent or not entity:
+    if intent in ['greeting', 'goodbye', 'thanks']:
+        response_text = generate_response(intent, None)
+    elif not entity:
         response_text = "I'm sorry, I didn't quite understand. Please mention a car model and what you want to know (e.g., price, mileage)."
     else:
         car_details = get_car_details(entity, CAR_DATA)
