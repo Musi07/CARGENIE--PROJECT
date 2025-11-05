@@ -38,7 +38,7 @@ def get_car_details(model_name, car_data):
             return car
     return None
 
-# --- *** NEW: Upgraded 'parse_user_input' for Filtering *** ---
+# --- *** UPDATED: 'parse_user_input' for Recommendations *** ---
 def parse_user_input(user_text, car_data):
     """Parses user input to find intent and entity/criteria."""
     user_text = user_text.lower()
@@ -53,8 +53,29 @@ def parse_user_input(user_text, car_data):
         if any(keyword in user_text for keyword in keywords):
             return intent, None
 
-    # --- NEW: Check for Filter Intent ---
-    filter_keywords = ['find', 'show me', 'recommend', 'looking for', 'under', 'over', 'cheaper than', 'less than', 'more than']
+    # --- NEW: Check for Recommendation Intent (before filter) ---
+    if any(k in user_text for k in ['best', 'most', 'cheapest', 'recommend me']):
+        criteria = {}
+        
+        # Check for car type
+        car_types = set(car['Type'].lower() for car in car_data if 'Type' in car)
+        for car_type in car_types:
+            if car_type in user_text:
+                criteria['type'] = car_type
+                break
+        
+        # Check for sorting keyword
+        if any(k in user_text for k in ['cheapest', 'lowest price']):
+            criteria['sort_by'] = 'price_asc'
+        elif any(k in user_text for k in ['most efficient', 'best mileage', 'highest mileage']):
+            criteria['sort_by'] = 'mileage_desc'
+        
+        if 'sort_by' in criteria:
+            return 'get_recommendation', criteria # e.g., {'type': 'suv', 'sort_by': 'price_asc'}
+    # --- End of Recommendation Intent ---
+
+    # --- Check for Filter Intent ---
+    filter_keywords = ['find', 'show me', 'looking for', 'under', 'over', 'cheaper than', 'less than', 'more than']
     if any(keyword in user_text for keyword in filter_keywords):
         criteria = {}
         
@@ -66,7 +87,6 @@ def parse_user_input(user_text, car_data):
                 break
         
         # 2. Find Price criteria (using Regular Expressions)
-        # Finds numbers like 30000, 30,000, or $30000
         price_match = re.search(r'(\$)?([0-9,]+)', user_text)
         if price_match:
             price_str = price_match.group(2).replace(',', '') # Get '30000'
@@ -96,9 +116,8 @@ def parse_user_input(user_text, car_data):
     matched_entity = None
     if car_data:
         model_list = [car['Model'] for car in car_data if 'Model' in car]
-        # Use extractOne to find the best match for a car model in the user's text
         best_match, score = process.extractOne(user_text, model_list)
-        if score > 50: # Confidence threshold (tune as needed)
+        if score > 50: # Confidence threshold
             matched_entity = best_match # This is the correct model name, e.g., "Mustang"
             
     # Now find the task intent
@@ -129,14 +148,13 @@ def filter_cars(criteria, car_data):
         return matches
         
     for car in car_data:
-        # Check each car against each criterion
         passes_all_checks = True
         
         # 1. Check Type
         if 'type' in criteria:
             if car.get('Type', '').lower() != criteria['type']:
                 passes_all_checks = False
-                continue # Skip to next car
+                continue 
         
         # 2. Check Company
         if 'company' in criteria:
@@ -152,7 +170,7 @@ def filter_cars(criteria, car_data):
                     passes_all_checks = False
                     continue
             except (ValueError, TypeError):
-                passes_all_checks = False # Price is not a valid number
+                passes_all_checks = False 
                 continue
 
         # 4. Check Price (More Than)
@@ -163,17 +181,16 @@ def filter_cars(criteria, car_data):
                     passes_all_checks = False
                     continue
             except (ValueError, TypeError):
-                passes_all_checks = False # Price is not a valid number
+                passes_all_checks = False 
                 continue
         
-        # If the car passed all checks, add it to the list
         if passes_all_checks:
             matches.append(car)
             
     return matches
 
 
-# --- *** UPDATED: 'generate_response' to handle filtering *** ---
+# --- *** UPDATED: 'generate_response' to handle recommendations *** ---
 def generate_response(intent, details): # 'details' is either car_details (dict) or criteria (dict) or None
     # Handle conversational intents first
     if intent == 'greeting':
@@ -183,7 +200,57 @@ def generate_response(intent, details): # 'details' is either car_details (dict)
     if intent == 'thanks':
         return "You're welcome! Is there anything else I can help with?"
 
-    # --- NEW: Handle Filter Intent ---
+    # --- NEW: Handle Recommendation Intent ---
+    if intent == 'get_recommendation':
+        criteria = details
+        matches = []
+        
+        # First, filter by type if provided (e.g., "cheapest SUV")
+        if 'type' in criteria:
+            matches = filter_cars({'type': criteria['type']}, CAR_DATA)
+        else:
+            matches = list(CAR_DATA) # Start with all cars
+
+        if not matches:
+            return "I'm sorry, I couldn't find any cars for that recommendation."
+
+        # Now, sort the matches
+        sort_key = criteria.get('sort_by')
+        
+        if sort_key == 'price_asc':
+            try:
+                # Sort by Price_Base_USD (float), handling errors
+                sorted_matches = sorted(
+                    matches, 
+                    key=lambda car: float(car.get('Price_Base_USD', 'inf'))
+                )
+                top_car = sorted_matches[0]
+                type_str = criteria.get('type', 'car')
+                return f"The cheapest <b>{type_str}</b> in my database is the <b>{top_car['Company']} {top_car['Model']}</b>, starting at <b>${top_car['Price_Base_USD']}</b>."
+            except Exception as e:
+                print(f"Error sorting by price: {e}")
+                return "I had trouble sorting the prices for that request."
+
+        if sort_key == 'mileage_desc':
+            try:
+                # Sort by Mileage_kmpl (float, descending), handling errors
+                sorted_matches = sorted(
+                    matches, 
+                    key=lambda car: float(car.get('Mileage_kmpl', '0')), 
+                    reverse=True
+                )
+                top_car = sorted_matches[0]
+                type_str = criteria.get('type', 'car')
+                # Re-use our smart mileage logic!
+                mileage_response = generate_response('get_mileage', top_car) 
+                return f"The most efficient <b>{type_str}</b> I found is the <b>{top_car['Company']} {top_car['Model']}</b>.<br>{mileage_response}"
+            except Exception as e:
+                print(f"Error sorting by mileage: {e}")
+                return "I had trouble sorting the mileage for that request."
+        
+        return "I can find the cheapest or most fuel-efficient car. What would you like?"
+
+    # --- Handle Filter Intent ---
     if intent == 'filter_cars':
         criteria = details # In this case, 'details' is our criteria dictionary
         matches = filter_cars(criteria, CAR_DATA)
@@ -458,12 +525,12 @@ HTML_TEMPLATE = """
                 <button id="sendButton" title="Send">➤</button> 
             </div>
             
-            <!-- --- *** NEW: Updated Suggestion Buttons for Filtering *** --- -->
+            <!-- --- *** NEW: Updated Suggestion Buttons for Recommender *** --- -->
             <div class="suggestion-area" id="suggestionArea">
-                <button class="suggestion-btn">Tell me about Model 3</button>
-                <button class="suggestion-btn">Price of F-150</button>
-                <button class="suggestion-btn">Show me all SUVs</button>
                 <button class="suggestion-btn">Find cars under $30000</button>
+                <button class="suggestion-btn">Show me all SUVs</button>
+                <button class="suggestion-btn">Cheapest car?</button>
+                <button class="suggestion-btn">Most efficient car?</button>
             </div>
         </div>
 
@@ -550,7 +617,7 @@ def home():
     """Renders the main chat page."""
     return render_template_string(HTML_TEMPLATE)
 
-# --- *** UPDATED: 'ask' function to handle new filter logic *** ---
+# --- *** UPDATED: 'ask' function to handle all intents *** ---
 @app.route('/ask', methods=['POST'])
 def ask():
     """Receives questions from the user and returns the bot's answer."""
@@ -563,11 +630,11 @@ def ask():
     intent, details = parse_user_input(user_message, CAR_DATA)
     
     car_details = None
-    if intent not in ['greeting', 'goodbye', 'thanks', 'filter_cars']:
+    if intent not in ['greeting', 'goodbye', 'thanks', 'filter_cars', 'get_recommendation']:
         if details: # 'details' is a car model string
             car_details = get_car_details(details, CAR_DATA)
         response_text = generate_response(intent, car_details)
-    elif intent == 'filter_cars':
+    elif intent == 'filter_cars' or intent == 'get_recommendation':
         # 'details' is our criteria dictionary
         response_text = generate_response(intent, details)
     else:
