@@ -3,7 +3,7 @@ from fuzzywuzzy import process
 import csv
 import os
 import time 
-import re # --- NEW: Import Regular Expressions for finding numbers
+import re 
 
 app = Flask(__name__)
 
@@ -38,7 +38,7 @@ def get_car_details(model_name, car_data):
             return car
     return None
 
-# --- *** UPDATED: 'parse_user_input' for Recommendations *** ---
+# --- 'parse_user_input' for Recommendations ---
 def parse_user_input(user_text, car_data):
     """Parses user input to find intent and entity/criteria."""
     user_text = user_text.lower()
@@ -134,13 +134,24 @@ def parse_user_input(user_text, car_data):
             matched_intent = intent
             break
             
+    # --- *** NEW LOGIC BLOCK! *** ---
+    # If we found an intent (like 'get_all_info') but NO car *model*...
+    if matched_intent and not matched_entity:
+        # ...let's check if they just gave us a *company* name.
+        companies = set(car['Company'].lower() for car in car_data if 'Company' in car)
+        for company in companies:
+            if company in user_text:
+                # They did! This is a 'get_company_info' intent.
+                return 'get_company_info', company # e.g., 'get_company_info', 'tesla'
+    # --- *** END OF NEW LOGIC BLOCK *** ---
+            
     # If we found a car but no specific task, default to 'get_all_info'
     if not matched_intent and matched_entity:
         matched_intent = 'get_all_info'
         
     return matched_intent, matched_entity
 
-# --- *** NEW: 'filter_cars' Search Engine Function *** ---
+# --- 'filter_cars' Search Engine Function ---
 def filter_cars(criteria, car_data):
     """Filters the car database based on given criteria."""
     matches = []
@@ -190,8 +201,8 @@ def filter_cars(criteria, car_data):
     return matches
 
 
-# --- *** UPDATED: 'generate_response' to handle recommendations *** ---
-def generate_response(intent, details): # 'details' is either car_details (dict) or criteria (dict) or None
+# --- 'generate_response' to handle recommendations ---
+def generate_response(intent, details): # 'details' is either car_details (dict), criteria (dict), company_name (str), or None
     # Handle conversational intents first
     if intent == 'greeting':
         return "Hello! How can I help you with car information today?"
@@ -200,7 +211,47 @@ def generate_response(intent, details): # 'details' is either car_details (dict)
     if intent == 'thanks':
         return "You're welcome! Is there anything else I can help with?"
 
-    # --- NEW: Handle Recommendation Intent ---
+    # --- *** NEW: Handle Company Info Intent *** ---
+    if intent == 'get_company_info':
+        company_name = details # 'details' is the company name string
+        
+        # Get a list of models for this company
+        models = [car['Model'] for car in CAR_DATA if car.get('Company', '').lower() == company_name]
+        model_list_str = ", ".join(models)
+        
+        # Hard-coded summaries
+        if company_name == 'tesla':
+            return (f"<b>Tesla, Inc.</b> is an American company known for revolutionizing the electric vehicle (EV) market. "
+                    f"They focus on high-performance electric cars with advanced technology and software.<br><br>"
+                    f"In my database, I have these Tesla models: <b>{model_list_str}</b>.")
+        
+        elif company_name == 'ford':
+            return (f"<b>Ford Motor Company</b> is one of America's oldest and largest automakers, founded in 1903. "
+                    f"They are famous for mass-producing cars and for iconic models like the Mustang and F-150 truck.<br><br>"
+                    f"In my database, I have these Ford models: <b>{model_list_str}</b>.")
+        
+        elif company_name == 'toyota':
+            return (f"<b>Toyota Motor Corporation</b> is a Japanese multinational manufacturer known worldwide for its reliability, efficiency, and quality vehicles "
+                    f"like the Camry and Corolla.<br><br>"
+                    f"In my database, I have these Toyota models: <b>{model_list_str}</b>.")
+
+        elif company_name == 'bmw':
+            return (f"<b>BMW (Bayerische Motoren Werke AG)</b> is a German luxury automaker famous for its performance, "
+                    f"high-quality engineering, and distinctive 'kidney grille' design.<br><br>"
+                    f"In my database, I have these BMW models: <b>{model_list_str}</b>.")
+        
+        elif company_name == 'honda':
+             return (f"<b>Honda Motor Co., Ltd.</b> is a Japanese public company known for its well-engineered and reliable cars and motorcycles, "
+                    f"with popular models like the Civic and CR-V.<br><br>"
+                    f"In my database, I have these Honda models: <b>{model_list_str}</b>.")
+        
+        # A fallback for other companies in our DB
+        elif company_name in [car['Company'].lower() for car in CAR_DATA if 'Company' in car]:
+             return (f"I don't have a detailed summary for <b>{company_name.title()}</b>, but I do have these models in my database:<br>"
+                    f"<b>{model_list_str}</b>")
+    # --- *** End of Company Info Intent *** ---
+
+    # --- Handle Recommendation Intent ---
     if intent == 'get_recommendation':
         criteria = details
         matches = []
@@ -379,6 +430,26 @@ HTML_TEMPLATE = """
             height: 28px; 
             width: auto;
         }
+        
+        /* --- NEW: Spacer and Reset Button Styles --- */
+        .header-spacer {
+            flex-grow: 1; /* This pushes the reset button to the right */
+        }
+        #resetButton {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 24px;
+            cursor: pointer;
+            transition: color 0.2s;
+            padding: 0;
+            line-height: 1;
+        }
+        #resetButton:hover {
+            color: var(--text-color);
+        }
+        /* --- End of New Styles --- */
+
 
         .chat-box { 
             flex-grow: 1; 
@@ -510,9 +581,11 @@ HTML_TEMPLATE = """
     <div class="main-container">
         
         <div class="app-header">
-            <!-- This uses the special 'url_for' to find your static logo -->
             <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Car Genie Logo">
             <span>Car Genie</span>
+            <!-- --- NEW: Spacer and Reset Button --- -->
+            <div class="header-spacer"></div>
+            <button id="resetButton" title="Reset Chat" style="display: none;">&#8634;</button> 
         </div>
         
         <div class="chat-box" id="chatBox">
@@ -542,6 +615,7 @@ HTML_TEMPLATE = """
         const sendButton = document.getElementById('sendButton');
         const greeting = document.getElementById('greeting');
         const suggestionArea = document.getElementById('suggestionArea');
+        const resetButton = document.getElementById('resetButton'); // --- NEW: Get Reset Button ---
 
         const suggestionButtons = document.querySelectorAll('.suggestion-btn');
         suggestionButtons.forEach(button => {
@@ -556,9 +630,10 @@ HTML_TEMPLATE = """
             const userText = userInput.value.trim();
             if (userText === '') return;
 
-            if (greeting) {
+            if (greeting.style.display !== 'none') {
                 greeting.style.display = 'none';
                 suggestionArea.style.display = 'none';
+                resetButton.style.display = 'block'; // --- NEW: Show the reset button ---
             }
 
             addMessage(userText, 'user-message');
@@ -599,7 +674,20 @@ HTML_TEMPLATE = """
             return messageElement; 
         }
         
+        // --- NEW: Reset Chat Function ---
+        function resetChat() {
+            // Clear the chat box but keep the greeting element (which is hidden)
+            chatBox.innerHTML = ''; 
+            chatBox.appendChild(greeting); // Put the greeting back in
+            
+            greeting.style.display = 'block'; // Show greeting
+            suggestionArea.style.display = 'flex'; // Show suggestions
+            resetButton.style.display = 'none'; // Hide reset button
+        }
+        
         sendButton.addEventListener('click', sendMessage);
+        resetButton.addEventListener('click', resetChat); // --- NEW: Add click listener for reset ---
+        
         userInput.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 e.preventDefault(); 
@@ -630,12 +718,15 @@ def ask():
     intent, details = parse_user_input(user_message, CAR_DATA)
     
     car_details = None
-    if intent not in ['greeting', 'goodbye', 'thanks', 'filter_cars', 'get_recommendation']:
+    if intent not in ['greeting', 'goodbye', 'thanks', 'filter_cars', 'get_recommendation', 'get_company_info']:
         if details: # 'details' is a car model string
             car_details = get_car_details(details, CAR_DATA)
         response_text = generate_response(intent, car_details)
-    elif intent == 'filter_cars' or intent == 'get_recommendation':
+    elif intent in ['filter_cars', 'get_recommendation']:
         # 'details' is our criteria dictionary
+        response_text = generate_response(intent, details)
+    elif intent == 'get_company_info':
+        # 'details' is the company name string
         response_text = generate_response(intent, details)
     else:
         # 'details' is None (for greetings, etc.)

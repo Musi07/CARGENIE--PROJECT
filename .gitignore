@@ -19,24 +19,6 @@ venv/
 # OS files
 .DS_Store
 Thumbs.db
-# Byte-compiled / cache files
-_pycache_/
-*.py[cod]
-*.pyo
-*.pyd
 
-# Virtual environment
-.venv/
-env/
-venv/
-
-# IDE settings
-.vscode/
-.idea/
-
-# Logs
-*.log
-
-# OS files
-.DS_Store
-Thumbs.db
+# --- NEW: Ignore the secret key ---
+serviceAccountKey.json
